@@ -19,23 +19,24 @@ const ImageUploader = () => {
       return;
     }
 
-    const formData = new FormData();
-    formData.append('image', image);
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const imageB64 = reader.result.split(',')[1]; // Get the base64 part
 
-    try {
-      // Send image to backend
-      const response = await axios.post('http://localhost:5000/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      try {
+        const response = await axios.post('http://localhost:5000/upload', {
+          imageB64,
+        });
 
-      // Get the description from the response and display it
-      setDescription(response.data?.choices[0]?.message?.content || 'No description received.');
-      setError('');
-    } catch (error) {
-      setError('Error uploading image or fetching description.');
-    }
+        setDescription(response.data?.choices[0]?.message?.content || 'No description received.');
+        setError('');
+      } catch (error) {
+        console.error('Error details:', error.response?.data || error.message);
+        setError('Error uploading image or fetching description.');
+      }
+    };
+
+    reader.readAsDataURL(image); // Convert image to base64 string
   };
 
   return (
