@@ -1,47 +1,69 @@
 const express = require('express');
+const bodyParser = require('body-parser');
 const axios = require('axios');
-const cors = require('cors');
+const cors = require('cors');  // Enable CORS
 
 const app = express();
 const port = 5000;
 
-app.use(cors());
-app.use(express.json({ limit: '10mb' })); // Increase request body size if necessary
+// Middleware to parse JSON request bodies
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(cors());  // Allow CORS for all routes
 
-const apiKey = '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';
-const invokeUrl = 'https://ai.api.nvidia.com/v1/vlm/microsoft/kosmos-2';
+const invokeUrl = "https://ai.api.nvidia.com/v1/vlm/adept/fuyu-8b";
+const stream = true;
+
+const headers = {
+  "Authorization": "Bearer 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",
+  "Accept": stream ? "text/event-stream" : "application/json"
+};
 
 app.post('/upload', async (req, res) => {
   try {
     const { imageB64 } = req.body;
 
-    if (imageB64.length > 180_000) {
-      return res.status(400).send('Image too large. Please upload an image below 180KB.');
+    // Check if image is valid and under 180KB
+    if (!imageB64 || Buffer.byteLength(imageB64, 'base64') > 180000) {
+      return res.status(400).send('Image too large or invalid. Please upload an image below 180KB.');
     }
 
     const payload = {
       "messages": [
         {
           "role": "user",
-          "content": `Who is in this photo? <img src="data:image/png;base64,${imageB64}" />`
+          "content": `What do you see in the following image? <img src="data:image/png;base64,${imageB64}" />`
         }
       ],
       "max_tokens": 1024,
       "temperature": 0.20,
-      "top_p": 0.20
+      "top_p": 0.70,
+      "seed": 0,
+      "stream": stream
     };
 
     const response = await axios.post(invokeUrl, payload, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
+      headers: headers,
+      responseType: 'stream',
     });
 
-    res.json(response.data);
+    // Set headers for streaming
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Pipe the streaming response to the frontend
+    response.data.pipe(res);
+
+    response.data.on('end', () => {
+      res.end();
+    });
+
+    response.data.on('error', (err) => {
+      console.error('Stream error:', err.message);
+      res.status(500).send('Error during streaming.');
+    });
   } catch (error) {
-    console.error('API call failed:', error.message);
+    console.error('API call failed:', error.response?.data || error.message);
     res.status(500).send('Error fetching image description.');
   }
 });
